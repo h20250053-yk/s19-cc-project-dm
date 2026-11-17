@@ -1,0 +1,34 @@
+CS/SS G527 Cloud Computing - Assignment
+Scenario: S19 Disaster Management | Concept: Leaderless Replication (Dynamo-like storage) | Cloud: Google Cloud Platform
+Each member: 2 requirements (a-h) + 2 microservices, and demonstrates them.
+
+ID No.          Name             Requirements                                   Microservices
+--------------  ---------------  ---------------------------------------------  -------------------------------------------
+<ID NUMBER 1>   <NAME 1>         (a) Infrastructure as Code (Terraform)         Incident Intake Service
+                                 (d) GitOps with Argo CD                         Resource Registry
+<ID NUMBER 2>   <NAME 2>         (f) Leaderless replication (Dynamo concept)    Replicated Incident Store
+                                 (g) Three cloud storage products                Quorum Coordinator
+<ID NUMBER 3>   <NAME 3>         (b) Serverless + REST / gRPC / message queues  Alert Service (serverless function)
+                                 (e) Apache Flink on Dataproc                    Situation Analytics Service (Flink job + API)
+<ID NUMBER 4>   <NAME 4>         (c) GKE, HPA and k6 load testing               Dispatch Service
+                                 (h) Observability (Prometheus, Grafana,         Volunteer Coordination Service
+                                     Cloud Logging)
+
+Detailed tasks
+--------------
+Member 1 (Phase 1 lead): infra/cloud/*.tf (network, GKE, Kafka VM, Artifact Registry, Cloud SQL, Firestore,
+          Cloud Storage, Pub/Sub, IAM); infra/platform/main.tf (Argo CD, config, secrets); argocd/apps/;
+          k8s/s19/kustomization.yaml; scripts/setup-repo.sh, release.sh, add-services.sh;
+          services/incident-intake; services/resource-registry (+ SQL migrations).
+Member 2 (Phase 2 lead): proto/incident_store.proto; services/incident-store; services/quorum-coordinator
+          (quorum, vector clocks, read repair, anti-entropy, conflict merge, fault injection);
+          tests/test_dynamo.py; scripts/consistency_test.py, demo-helpers.sh; storage demonstrations
+          (Cloud Storage, Cloud SQL, Firestore).
+Member 3 (Phase 3 lead): services/alert-function; infra/cloud/phase3.tf (function, Eventarc, Dataproc);
+          flink/situation-analytics-flink; services/situation-analytics; scripts/flink-submit.sh, traffic.sh;
+          Kafka topic design.
+Member 4 (Phase 4 lead): services/dispatch (+ SQL migration); services/volunteer-coordination;
+          k8s/s19/hpa.yaml; loadtest/hpa-load.js; scripts/load-test.sh, record-hpa.sh;
+          argocd/apps/monitoring*.yaml; k8s/monitoring (ServiceMonitor, Grafana dashboard);
+          Cloud Logging queries.
+Shared:   docs/DESIGN.md, docs/DEMO.md, end-to-end testing, evidence collection.

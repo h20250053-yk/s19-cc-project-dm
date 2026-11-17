@@ -1,0 +1,21 @@
+# Tells Prometheus to scrape /metrics of every S19 service in namespace s19.
+# The services expose http_requests_total, http_request_duration_seconds, quorum_* and replica_* metrics.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: s19-services
+  annotations:
+    # the ServiceMonitor type exists only after the "monitoring" app installed its CRDs
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  namespaceSelector:
+    matchNames: [s19]
+  selector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: [incident-intake, quorum-coordinator, incident-store, resource-registry,
+                 volunteer-coordination, dispatch, situation-analytics]
+  endpoints:
+    - {port: http, path: /metrics, interval: 15s}      # the 6 REST services
+    - {port: metrics, path: /metrics, interval: 15s}   # the 3 replicas

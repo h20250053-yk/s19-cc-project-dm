@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: monitoring
+resources:
+  - servicemonitor.yaml
+# The Grafana sidecar loads every ConfigMap labelled grafana_dashboard=1 as a dashboard
+configMapGenerator:
+  - name: s19-dashboard
+    files:
+      - s19-dashboard.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "1"

@@ -1,0 +1,6 @@
+# Force Linux (LF) line endings: bash scripts, Dockerfiles, YAML and Terraform break with Windows CRLF.
+* text=auto eol=lf
+*.jar binary
+*.png binary
+*.jpg binary
+*.zip binary

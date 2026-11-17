@@ -1,0 +1,35 @@
+# Argo CD application: deploys everything in k8s/s19/ (namespace s19) from GitHub.
+# https://github.com/h20250053-yk/s19-cc-project-dm.git is filled in by scripts/setup-repo.sh
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: s19-services
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/h20250053-yk/s19-cc-project-dm.git
+    targetRevision: main
+    path: k8s/s19
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: s19
+  # The HPA owns the replica count of these two Deployments; Argo CD must not reset it.
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: incident-intake
+      jsonPointers: [/spec/replicas]
+    - group: apps
+      kind: Deployment
+      name: quorum-coordinator
+      jsonPointers: [/spec/replicas]
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff: {duration: 20s, factor: 2, maxDuration: 3m}

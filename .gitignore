@@ -1,0 +1,15 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+# generated gRPC code (made by scripts/gen_proto.sh and inside the Docker build)
+services/common/s19common/pb/
+# Java
+flink/situation-analytics-flink/target/
+infra/cloud/.build/

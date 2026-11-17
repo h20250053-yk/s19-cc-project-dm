@@ -1,0 +1,2 @@
+# copy to terraform.tfvars and put your project id
+project_id = "s19-dm-123456"

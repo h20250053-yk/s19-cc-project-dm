@@ -1,0 +1,95 @@
+// S19 Disaster Management - Replicated Incident Store (Dynamo-style replica)
+// Used by: quorum-coordinator (client)  <->  incident-store-{0,1,2} (servers)
+// Transport: gRPC on port 50051 (plaintext inside the cluster).
+syntax = "proto3";
+
+package s19.store.v1;
+
+// One version (sibling) of a value, tagged with a vector clock.
+message Version {
+  map<string, int64> clock = 1;  // vector clock: writer-id -> counter
+  string value_json = 2;         // the incident document, JSON-encoded
+  int64 timestamp_ms = 3;        // wall-clock time of the write (tie-break / display only)
+  string writer = 4;             // which client-id produced this version
+}
+
+message PutRequest {
+  string key = 1;
+  repeated Version versions = 2; // normally 1; read repair may push several siblings
+}
+
+message PutResponse {
+  bool ok = 1;
+  string replica_id = 2;
+  int32 stored_versions = 3;     // how many siblings the replica now holds for the key
+}
+
+message GetRequest { string key = 1; }
+
+message GetResponse {
+  bool found = 1;
+  string replica_id = 2;
+  repeated Version versions = 3;
+}
+
+message Empty {}
+
+// Anti-entropy (Merkle-lite): 256 buckets of key hashes.
+message BucketHashes {
+  string replica_id = 1;
+  repeated string hashes = 2;    // len == 256, hex sha1 of bucket content
+}
+
+message BucketRequest { int32 bucket = 1; }
+
+message KeyDigest {
+  string key = 1;
+  string digest = 2;             // sha1 over the sorted sibling clocks
+}
+
+message BucketDigests {
+  string replica_id = 1;
+  repeated KeyDigest digests = 2;
+}
+
+message ScanRequest {
+  string after_key = 1;
+  int32 limit = 2;
+}
+
+message KeyVersions {
+  string key = 1;
+  repeated Version versions = 2;
+}
+
+message ScanResponse {
+  string replica_id = 1;
+  repeated KeyVersions items = 2;
+}
+
+message PingResponse {
+  string replica_id = 1;
+  string fault_mode = 2;
+  int64 key_count = 3;
+  int32 delay_ms = 4;
+}
+
+// Failure injection for the demo.
+//   none        - healthy
+//   down        - every data RPC fails with UNAVAILABLE (simulated crash / partition)
+//   slow        - every data RPC sleeps delay_ms first (simulated overload)
+//   drop_writes - Put returns ok but stores nothing (silent data loss -> repaired later)
+message FaultRequest {
+  string mode = 1;
+  int32 delay_ms = 2;
+}
+
+service IncidentStore {
+  rpc Put(PutRequest) returns (PutResponse);
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc Scan(ScanRequest) returns (ScanResponse);
+  rpc GetBucketHashes(Empty) returns (BucketHashes);
+  rpc GetBucketDigests(BucketRequest) returns (BucketDigests);
+  rpc Ping(Empty) returns (PingResponse);
+  rpc SetFault(FaultRequest) returns (PingResponse);
+}

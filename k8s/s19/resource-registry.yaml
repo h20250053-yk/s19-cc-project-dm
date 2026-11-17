@@ -1,0 +1,48 @@
+# Resource Registry: vehicles, supply kits, response teams in Cloud SQL (PostgreSQL, private IP).
+# Tables are created + seeded automatically at start-up (app/migrations/*.sql).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resource-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: resource-registry}
+  template:
+    metadata:
+      labels: {app: resource-registry}
+    spec:
+      securityContext: {runAsUser: 10001}
+      containers:
+        - name: app
+          image: s19/resource-registry
+          ports:
+            - {name: http, containerPort: 8080}
+          envFrom:
+            - configMapRef: {name: s19-config}
+          env:
+            - {name: SERVICE_NAME, value: "resource-registry"}
+            - name: DB_PASSWORD
+              valueFrom: {secretKeyRef: {name: s19-secrets, key: DB_PASSWORD}}
+            - {name: DB_POOL_MAX, value: "5"}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 384Mi}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: resource-registry
+  labels: {app: resource-registry}
+spec:
+  selector: {app: resource-registry}
+  ports:
+    - {name: http, port: 8080, targetPort: http}

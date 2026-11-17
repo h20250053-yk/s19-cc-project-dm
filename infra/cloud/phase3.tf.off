@@ -1,0 +1,197 @@
+# =====================================================================
+# Phase 3 additions: serverless Alert Service (requirement b) + Dataproc/Flink (requirement e)
+# This file is new in Phase 3 (the "archive" provider it uses is installed by `terraform init`).
+# =====================================================================
+
+variable "dataproc_enabled" {
+  type        = bool
+  default     = false
+  description = "true only while working on / demonstrating Flink (Dataproc costs about $0.09/h)"
+}
+
+# Bucket for build artefacts: function source zip, Flink job jar, Dataproc staging/temp files
+resource "google_storage_bucket" "build" {
+  name                        = "${var.project_id}-s19-build"
+  location                    = upper(var.region)
+  storage_class               = "STANDARD"
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+  force_destroy               = true
+  depends_on                  = [google_project_service.apis]
+}
+
+# ---------------------------------------------------------------- service accounts
+resource "google_service_account" "alert_fn" {
+  account_id   = "s19-alert-fn"
+  display_name = "S19 Alert Service (runtime)"
+  depends_on   = [google_project_service.apis]
+}
+
+resource "google_service_account" "eventarc" {
+  account_id   = "s19-eventarc"
+  display_name = "S19 Pub/Sub -> function trigger"
+  depends_on   = [google_project_service.apis]
+}
+
+resource "google_service_account" "fn_build" {
+  account_id   = "s19-fn-build"
+  display_name = "S19 function build (Cloud Build)"
+  depends_on   = [google_project_service.apis]
+}
+
+resource "google_service_account" "dataproc" {
+  account_id   = "s19-dataproc"
+  display_name = "S19 Dataproc (Flink) VM"
+  depends_on   = [google_project_service.apis]
+}
+
+locals {
+  phase3_roles = {
+    fn_firestore  = [google_service_account.alert_fn.email, "roles/datastore.user"]
+    fn_logs       = [google_service_account.alert_fn.email, "roles/logging.logWriter"]
+    ea_receiver   = [google_service_account.eventarc.email, "roles/eventarc.eventReceiver"]
+    ea_invoker    = [google_service_account.eventarc.email, "roles/run.invoker"]
+    build_builder = [google_service_account.fn_build.email, "roles/cloudbuild.builds.builder"]
+    build_logs    = [google_service_account.fn_build.email, "roles/logging.logWriter"]
+    build_ar      = [google_service_account.fn_build.email, "roles/artifactregistry.writer"]
+    dp_worker     = [google_service_account.dataproc.email, "roles/dataproc.worker"]
+    dp_logs       = [google_service_account.dataproc.email, "roles/logging.logWriter"]
+  }
+}
+
+resource "google_project_iam_member" "phase3" {
+  for_each = local.phase3_roles
+  project  = var.project_id
+  role     = each.value[1]
+  member   = "serviceAccount:${each.value[0]}"
+}
+
+resource "google_storage_bucket_iam_member" "build_readers" {
+  for_each = {
+    fn_build = google_service_account.fn_build.email
+    dataproc = google_service_account.dataproc.email
+  }
+  bucket = google_storage_bucket.build.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${each.value}"
+}
+
+# ---------------------------------------------------------------- Alert Service (serverless, requirement b)
+data "archive_file" "alert_fn" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../services/alert-function"
+  output_path = "${path.module}/.build/alert-function.zip"
+  excludes    = ["__pycache__"]
+}
+
+resource "google_storage_bucket_object" "alert_fn_src" {
+  name   = "functions/alert-function-${data.archive_file.alert_fn.output_md5}.zip"
+  bucket = google_storage_bucket.build.name
+  source = data.archive_file.alert_fn.output_path
+}
+
+resource "google_cloudfunctions2_function" "alert" {
+  name     = "alert-service"
+  location = var.region
+
+  build_config {
+    runtime         = "python312"
+    entry_point     = "handle_alert"
+    service_account = google_service_account.fn_build.id
+    source {
+      storage_source {
+        bucket = google_storage_bucket.build.name
+        object = google_storage_bucket_object.alert_fn_src.name
+      }
+    }
+  }
+
+  service_config {
+    min_instance_count    = 0 # scales to zero: no cost when idle
+    max_instance_count    = 2
+    available_memory      = "256M"
+    timeout_seconds       = 60
+    ingress_settings      = "ALLOW_INTERNAL_ONLY"
+    service_account_email = google_service_account.alert_fn.email
+    environment_variables = {
+      GCP_PROJECT_ID = var.project_id
+    }
+  }
+
+  # Pub/Sub topic alert-requests -> Eventarc -> this function (asynchronous, event-driven)
+  event_trigger {
+    trigger_region        = var.region
+    event_type            = "google.cloud.pubsub.topic.v1.messagePublished"
+    pubsub_topic          = google_pubsub_topic.alerts.id
+    retry_policy          = "RETRY_POLICY_RETRY"
+    service_account_email = google_service_account.eventarc.email
+  }
+
+  depends_on = [google_project_iam_member.phase3, google_storage_bucket_iam_member.build_readers]
+}
+
+# ---------------------------------------------------------------- Firestore index for the analytics API
+# query: analytics_windows WHERE region == X ORDER BY windowStart DESC
+resource "google_firestore_index" "windows_by_region" {
+  database   = google_firestore_database.default.name
+  collection = "analytics_windows"
+  fields {
+    field_path = "region"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "windowStart"
+    order      = "DESCENDING"
+  }
+}
+
+# ---------------------------------------------------------------- Dataproc single-node cluster with Flink (requirement e)
+# Only exists while var.dataproc_enabled = true. Auto-deletes after 2 h without a running job.
+resource "google_dataproc_cluster" "flink" {
+  count  = var.dataproc_enabled ? 1 : 0
+  name   = "s19-flink"
+  region = var.region
+
+  cluster_config {
+    staging_bucket = google_storage_bucket.build.name
+    temp_bucket    = google_storage_bucket.build.name
+
+    gce_cluster_config {
+      zone                   = var.zone
+      subnetwork             = google_compute_subnetwork.main.self_link # same subnet as Kafka 10.10.0.10
+      internal_ip_only       = true
+      service_account        = google_service_account.dataproc.email
+      service_account_scopes = ["cloud-platform"]
+    }
+
+    master_config {
+      num_instances = 1
+      machine_type  = "e2-standard-2"
+      disk_config {
+        boot_disk_type    = "pd-standard"
+        boot_disk_size_gb = 30
+      }
+    }
+
+    software_config {
+      image_version       = "2.2-debian12"
+      optional_components = ["FLINK"]
+      override_properties = {
+        "dataproc:dataproc.allow.zero.workers" = "true" # single-node cluster
+        # Flink job + YARN container logs -> Cloud Logging (requirement h: "including the analytics job")
+        "dataproc:dataproc.logging.stackdriver.enable"                    = "true"
+        "dataproc:dataproc.logging.stackdriver.job.driver.enable"         = "true"
+        "dataproc:dataproc.logging.stackdriver.job.yarn.container.enable" = "true"
+      }
+    }
+
+    endpoint_config { enable_http_port_access = true } # "Web Interfaces" tab -> Flink / YARN UI
+
+    lifecycle_config { idle_delete_ttl = "7200s" }
+  }
+
+  depends_on = [google_project_iam_member.phase3, google_storage_bucket_iam_member.build_readers]
+}
+
+output "build_bucket" { value = google_storage_bucket.build.name }
+output "dataproc_cluster" { value = var.dataproc_enabled ? google_dataproc_cluster.flink[0].name : "" }

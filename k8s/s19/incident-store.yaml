@@ -1,0 +1,55 @@
+# Replicated Incident Store: 3 independent replicas (N=3), each with its own disk.
+# Stable names: incident-store-0/1/2.incident-store-headless:50051 (gRPC)
+apiVersion: v1
+kind: Service
+metadata:
+  name: incident-store-headless
+  labels: {app: incident-store}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector: {app: incident-store}
+  ports:
+    - {name: grpc, port: 50051, targetPort: 50051}
+    - {name: metrics, port: 8080, targetPort: 8080}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: incident-store
+spec:
+  serviceName: incident-store-headless
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels: {app: incident-store}
+  template:
+    metadata:
+      labels: {app: incident-store}
+    spec:
+      securityContext: {runAsUser: 10001, fsGroup: 10001}
+      containers:
+        - name: replica
+          image: s19/incident-store
+          ports:
+            - {name: grpc, containerPort: 50051}
+            - {name: metrics, containerPort: 8080}
+          env:
+            - name: REPLICA_ID
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - {name: DATA_DIR, value: /data}
+          resources:
+            requests: {cpu: 50m, memory: 96Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          readinessProbe:
+            tcpSocket: {port: 50051}
+            periodSeconds: 5
+          volumeMounts:
+            - {name: data, mountPath: /data}
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: standard-rwo
+        resources:
+          requests: {storage: 1Gi}

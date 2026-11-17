@@ -1,0 +1,21 @@
+# Everything Argo CD deploys into namespace s19.
+# Image addresses: cloud-computing-project-515018 is filled in by scripts/setup-repo.sh,
+# newTag is updated by scripts/release.sh every time you build new images.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: s19
+resources:
+  - incident-store.yaml
+  - quorum-coordinator.yaml
+  - incident-intake.yaml
+  - hpa.yaml
+images:
+  - name: s19/incident-store
+    newName: us-central1-docker.pkg.dev/cloud-computing-project-515018/s19/incident-store
+    newTag: none
+  - name: s19/quorum-coordinator
+    newName: us-central1-docker.pkg.dev/cloud-computing-project-515018/s19/quorum-coordinator
+    newTag: none
+  - name: s19/incident-intake
+    newName: us-central1-docker.pkg.dev/cloud-computing-project-515018/s19/incident-intake
+    newTag: none

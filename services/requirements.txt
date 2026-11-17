@@ -1,0 +1,16 @@
+# Shared by every Python microservice image (one cached dependency layer for all 7 images).
+# Versions pinned to current PyPI releases at time of writing (Nov 2026).
+fastapi==0.163.1
+uvicorn[standard]==0.54.0
+httpx==0.28.1
+pydantic==2.14.3
+prometheus-client==0.26.0
+python-multipart==0.0.33
+grpcio==1.85.1
+grpcio-tools==1.85.1
+confluent-kafka==2.16.1
+google-cloud-storage==3.17.1
+google-cloud-firestore==2.34.1
+google-cloud-pubsub==2.44.0
+psycopg[binary]==3.3.9
+psycopg-pool==3.3.3

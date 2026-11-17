@@ -1,0 +1,64 @@
+# Prometheus + Grafana + kube-state-metrics + node-exporter (kube-prometheus-stack Helm chart),
+# deployed by Argo CD (requirement h). Values are inline so this one file is the whole configuration.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 87.19.2
+    helm:
+      releaseName: kps
+      valuesObject:
+        alertmanager: {enabled: false}
+        # GKE runs the control plane for us; these targets cannot be scraped
+        kubeEtcd: {enabled: false}
+        kubeControllerManager: {enabled: false}
+        kubeScheduler: {enabled: false}
+        kubeProxy: {enabled: false}
+        prometheus:
+          prometheusSpec:
+            scrapeInterval: 15s
+            retention: 2d
+            # pick up ServiceMonitors from every namespace/label, not only this Helm release
+            serviceMonitorSelectorNilUsesHelmValues: false
+            podMonitorSelectorNilUsesHelmValues: false
+            ruleSelectorNilUsesHelmValues: false
+            resources:
+              requests: {cpu: 100m, memory: 400Mi}
+              limits: {memory: 1Gi}
+        grafana:
+          persistence: {enabled: false}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 384Mi}
+          sidecar:
+            dashboards:
+              enabled: true
+              label: grafana_dashboard
+              labelValue: "1"
+              searchNamespace: ALL
+        prometheusOperator:
+          resources:
+            requests: {cpu: 50m, memory: 96Mi}
+        kube-state-metrics:
+          resources:
+            requests: {cpu: 20m, memory: 64Mi}
+        prometheus-node-exporter:
+          resources:
+            requests: {cpu: 20m, memory: 32Mi}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true      # the Prometheus Operator CRDs are too big for normal apply
+    retry:
+      limit: 5
+      backoff: {duration: 30s, factor: 2, maxDuration: 5m}

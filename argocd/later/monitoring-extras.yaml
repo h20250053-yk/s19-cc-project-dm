@@ -1,0 +1,23 @@
+# Our additions to the monitoring stack: which services to scrape + the S19 Grafana dashboard.
+# https://github.com/h20250053-yk/s19-cc-project-dm.git is filled in by the command in docs/PHASE4.md Step 1.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring-extras
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/h20250053-yk/s19-cc-project-dm.git
+    targetRevision: main
+    path: k8s/monitoring
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 10
+      backoff: {duration: 30s, factor: 2, maxDuration: 5m}

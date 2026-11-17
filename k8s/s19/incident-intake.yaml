@@ -1,0 +1,45 @@
+# Incident Intake: the public web service. A LoadBalancer Service gives it a public IP
+# (http://<EXTERNAL-IP>/api/incidents) in about a minute.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: incident-intake
+spec:
+  # no "replicas:" here - the HPA (hpa.yaml) decides how many pods run
+  selector:
+    matchLabels: {app: incident-intake}
+  template:
+    metadata:
+      labels: {app: incident-intake}
+    spec:
+      securityContext: {runAsUser: 10001}
+      containers:
+        - name: app
+          image: s19/incident-intake
+          ports:
+            - {name: http, containerPort: 8080}
+          envFrom:
+            - configMapRef: {name: s19-config}
+          env:
+            - {name: COORDINATOR_URL, value: "http://quorum-coordinator:8080"}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 384Mi}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 20
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: incident-intake
+  labels: {app: incident-intake}
+spec:
+  type: LoadBalancer
+  selector: {app: incident-intake}
+  ports:
+    - {name: http, port: 80, targetPort: http}

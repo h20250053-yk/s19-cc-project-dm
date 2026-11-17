@@ -1,0 +1,47 @@
+# Quorum Coordinator: stateless, N=3 W=2 R=2. REST in (8080), gRPC out to the replicas.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quorum-coordinator
+spec:
+  # no "replicas:" here - the HPA (hpa.yaml) decides how many pods run
+  selector:
+    matchLabels: {app: quorum-coordinator}
+  template:
+    metadata:
+      labels: {app: quorum-coordinator}
+    spec:
+      securityContext: {runAsUser: 10001}
+      containers:
+        - name: app
+          image: s19/quorum-coordinator
+          ports:
+            - {name: http, containerPort: 8080}
+          envFrom:
+            - configMapRef: {name: s19-config}
+          env:
+            - {name: WRITE_QUORUM, value: "2"}
+            - {name: READ_QUORUM, value: "2"}
+            - {name: ANTI_ENTROPY_INTERVAL_S, value: "30"}
+            - name: ADMIN_TOKEN
+              valueFrom: {secretKeyRef: {name: s19-secrets, key: ADMIN_TOKEN}}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 384Mi}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 20
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: quorum-coordinator
+  labels: {app: quorum-coordinator}
+spec:
+  selector: {app: quorum-coordinator}
+  ports:
+    - {name: http, port: 8080, targetPort: http}
