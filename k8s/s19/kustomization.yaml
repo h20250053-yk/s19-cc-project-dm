@@ -12,10 +12,10 @@ resources:
 images:
   - name: s19/incident-store
     newName: us-central1-docker.pkg.dev/cloud-computing-project-515018/s19/incident-store
-    newTag: none
+    newTag: v1117-213931
   - name: s19/quorum-coordinator
     newName: us-central1-docker.pkg.dev/cloud-computing-project-515018/s19/quorum-coordinator
-    newTag: none
+    newTag: v1117-213931
   - name: s19/incident-intake
     newName: us-central1-docker.pkg.dev/cloud-computing-project-515018/s19/incident-intake
-    newTag: none
+    newTag: v1117-213931
