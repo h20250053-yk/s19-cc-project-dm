@@ -8,6 +8,8 @@ resources:
   - incident-store.yaml
   - quorum-coordinator.yaml
   - incident-intake.yaml
+  - resource-registry.yaml
+  - volunteer-coordination.yaml
   - hpa.yaml
 images:
   - name: s19/incident-store
@@ -19,3 +21,9 @@ images:
   - name: s19/incident-intake
     newName: us-central1-docker.pkg.dev/cloud-computing-project-515018/s19/incident-intake
     newTag: v1117-213931
+  - name: s19/resource-registry
+    newName: us-central1-docker.pkg.dev/cloud-computing-project-515018/s19/resource-registry
+    newTag: v1118-133226
+  - name: s19/volunteer-coordination
+    newName: us-central1-docker.pkg.dev/cloud-computing-project-515018/s19/volunteer-coordination
+    newTag: v1118-133226
