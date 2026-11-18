@@ -1,0 +1,30 @@
+[PASS] 1. Configuration N=3, W=2, R=2 satisfies R+W>N
+       {"n": 3, "w": 2, "r": 2, "rPlusWGreaterThanN": true, "replicas": {"incident-store-0": "incident-store-0.incident-store-headless:50051", "incident-store-1": "incident-store-1.incident-store-headless:50051", "incident-store-2": "incident-store-2.incident-store-headless:50051"}, "rpcTimeoutMs": 800, "antiEntropyIntervalS": 30}
+[PASS] 2. Quorum write (W=2) acknowledged
+       {"acks": 2, "w": 2, "n": 3, "replicas": {"incident-store-0": "pending", "incident-store-1": "ok", "incident-store-2": "ok"}}
+[PASS] 2b. Quorum read (R=2) returns the write
+       {"responded": ["incident-store-0", "incident-store-2"], "context": {"intake": 1}}
+[PASS] 3a. Write succeeds with one replica DOWN (2/3 acks)
+       {"replicas": {"incident-store-0": "ok", "incident-store-1": "ok", "incident-store-2": "error: UNAVAILABLE: incident-store-2 is down (fault injection)"}, "perReplica": {"incident-store-0": ["REPORTED"], "incident-store-1": ["REPORTED"], "incident-store-2": "UNAVAILABLE: incident-store-2 is down (fault injection)"}}
+[PASS] 3b. Recovered replica is repaired by anti-entropy (Merkle-lite)
+       {"antiEntropy": {"incident-store-2": 1}, "perReplica": {"incident-store-0": ["REPORTED"], "incident-store-1": ["REPORTED"], "incident-store-2": ["REPORTED"]}}
+[PASS] 4. Read repair fixes a replica that silently dropped a write
+       {"beforeRead": {"incident-store-0": ["REPORTED"], "incident-store-1": ["VERIFIED"], "incident-store-2": ["VERIFIED"]}, "staleInQuorum": ["incident-store-0"], "afterRead": {"incident-store-0": ["VERIFIED"], "incident-store-1": ["VERIFIED"], "incident-store-2": ["VERIFIED"]}}
+[PASS] 5a. Concurrent writes detected as siblings (vector clocks)
+       {"siblingClocks": [{"field-officer": 1, "dispatch": 1, "intake": 1}, {"field-officer": 2, "intake": 1}]}
+[PASS] 5b. Conflict resolved by semantic merge (DISPATCHED + CRITICAL kept)
+       {"status": "DISPATCHED", "severity": "CRITICAL", "context": {"field-officer": 2, "intake": 1, "dispatch": 1, "coordinator": 1}}
+[PASS] 5c. Merged version written back - siblings collapsed on all replicas
+       {"perReplica": {"incident-store-0": ["DISPATCHED"], "incident-store-1": ["DISPATCHED"], "incident-store-2": ["DISPATCHED"]}}
+[PASS] 6a. W=2 write REJECTED when only 1/3 replicas is up (consistency over availability)
+       {"error": "write quorum not reached (1/2)", "key": "inc-5e2df89f6f03", "context": {"coordinator": 1, "field-officer": 2, "dispatch": 2, "intake": 1}, "w": 2, "n": 3, "acks": 1, "replicas": {"incident-store-0": "ok", "incident-store-1": "error: UNAVAILABLE: incident-store-1 is down (fault injection)", "incident-store-2": "error: UNAVAILABLE: incident-store-2 is down (fault injection)"}}
+[PASS] 6b. Same write with W=1 is accepted (availability over consistency)
+       {"acks": 1}
+[PASS] 6c. R=2 read fails while 2 replicas are down
+       {"error": "read quorum not reached (1/2)", "key": "inc-5e2df89f6f03", "r": 2, "responded": ["incident-store-0"], "errors": {"incident-store-2": "UNAVAILABLE: incident-store-2 is down (fault injection)", "incident-store-1": "UNAVAILABLE: incident-store-1 is down (fault injection)"}}
+[PASS] 6d. After recovery + anti-entropy all replicas converge
+       {"incident-store-0": ["RESOLVED"], "incident-store-1": ["RESOLVED"], "incident-store-2": ["RESOLVED"]}
+[PASS] 7. A slow replica (2 s) does not block W=2 writes
+       {"seconds": 0.426, "replicas": {"incident-store-0": "ok", "incident-store-1": "pending", "incident-store-2": "ok"}}
+
+14/14 checks passed
